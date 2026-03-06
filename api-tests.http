@@ -1,0 +1,14 @@
+### Login Artisan
+POST http://localhost:8080/auth/login
+Content-Type: application/json
+
+{
+  "email": "artisan@test.com",
+  "password": "123456"
+}
+
+###
+
+### Get Artisan Orders
+GET http://localhost:8080/artisan/orders
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhcnRpc2FuQHRlc3QuY29tIiwicm9sZSI6IkFSVElTQU4iLCJpYXQiOjE3NzI4MDQ4ODksImV4cCI6MTc3MjgwODQ4OX0.2iD7bjEUAcbagYtNRqzz8MNZHzTy1zOidOzE7Spbxqs
