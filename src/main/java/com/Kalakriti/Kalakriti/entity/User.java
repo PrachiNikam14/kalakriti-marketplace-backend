@@ -1,11 +1,16 @@
 package com.Kalakriti.Kalakriti.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import org.hibernate.annotations.SQLInsert;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import java.util.Collection;
 import java.util.List;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 
@@ -17,18 +22,28 @@ public class User implements UserDetails {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotBlank
+    @Size(min=2 , max=50)
     private String name;
 
     @Column(unique = true)
+    @NotBlank
+    @Email
     private String email;
 
-
+    @NotBlank
+    @Size(min=8)
     private String password;
+
+    @NotBlank
+    @Size(max=10)
     private String phoneNumber;
 
 
     @Enumerated(EnumType.STRING)
     private Role role;   // ADMIN / ARTISAN / CUSTOMER
+
+
     @Column(nullable = false)
     private String verificationStatus = "PENDING"; // PENDING, APPROVED, REJECTED
 
@@ -111,8 +126,8 @@ public class User implements UserDetails {
         this.password = password;
     }
 
-    public String getRole() {
-        return String.valueOf(role);
+    public Role getRole() {
+        return role;
     }
 
     public void setRole(Role role) {

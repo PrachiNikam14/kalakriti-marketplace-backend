@@ -1,12 +1,18 @@
 package com.Kalakriti.Kalakriti.service;
 
-import com.razorpay.*;
+import com.Kalakriti.Kalakriti.entity.Order;
+import com.razorpay.RazorpayClient;
+import com.razorpay.RazorpayException;
+import com.razorpay.Utils;
+import jakarta.annotation.PostConstruct;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.util.Base64;
+import java.nio.charset.StandardCharsets;
 
 @Service
 public class RazorpayService {
@@ -17,41 +23,78 @@ public class RazorpayService {
     @Value("${razorpay.secret}")
     private String secret;
 
-    public Order createRazorpayOrder(double amount) throws RazorpayException {
+    private RazorpayClient razorpayClient;
 
-        RazorpayClient client = new RazorpayClient(key, secret);
-        System.out.println("KEY: " + key);
-        System.out.println("SECRET: " + secret);
+    @PostConstruct
+    public void init() throws RazorpayException {
+        razorpayClient = new RazorpayClient(key, secret);
+    }
+
+    public com.razorpay.Order createRazorpayOrder(Order order)
+            throws RazorpayException {
 
         JSONObject options = new JSONObject();
-        options.put("amount", (int)(amount * 100)); // amount in paise
+
+        options.put(
+                "amount",
+                Math.round(order.getTotalPrice() * 100)
+        );
+
         options.put("currency", "INR");
-        options.put("receipt", "txn_" + System.currentTimeMillis());
+        options.put("receipt", "order_" + order.getId());
 
-        return client.orders.create(options);
+        return razorpayClient.orders.create(options);
     }
 
-    public boolean verifySignature(String orderId,
-                                   String paymentId,
-                                   String signature) throws Exception {
+    public boolean verifySignature(
+            String razorpayOrderId,
+            String razorpayPaymentId,
+            String razorpaySignature
+    ) throws RazorpayException {
 
-        String payload = orderId + "|" + paymentId;
+        try {
+            JSONObject attributes = new JSONObject();
 
-        String generatedSignature = hmacSHA256(payload, secret);
+            attributes.put("razorpay_order_id", razorpayOrderId);
+            attributes.put("razorpay_payment_id", razorpayPaymentId);
+            attributes.put("razorpay_signature", razorpaySignature);
 
-        return generatedSignature.equalsIgnoreCase(signature);
+            return Utils.verifyPaymentSignature(attributes, secret);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
-    private String hmacSHA256(String data, String secret) throws Exception {
 
-        Mac mac = Mac.getInstance("HmacSHA256");
-        SecretKeySpec secretKey =
-                new SecretKeySpec(secret.getBytes(), "HmacSHA256");
 
-        mac.init(secretKey);
+    public boolean verifyPayment(
+            String orderId,
+            String paymentId,
+            String signature
+    ) throws Exception {
 
-        byte[] hash = mac.doFinal(data.getBytes());
+        String data = orderId + "|" + paymentId;
 
-        return Base64.getEncoder().encodeToString(hash);
+        Mac sha256Hmac = Mac.getInstance("HmacSHA256");
+        SecretKeySpec secretKeySpec = new SecretKeySpec(
+                secret.getBytes(StandardCharsets.UTF_8),
+                "HmacSHA256"
+        );
+
+        sha256Hmac.init(secretKeySpec);
+
+        byte[] hash = sha256Hmac.doFinal(
+                data.getBytes(StandardCharsets.UTF_8)
+        );
+
+        StringBuilder generatedSignature = new StringBuilder();
+
+        for (byte b : hash) {
+            generatedSignature.append(String.format("%02x", b));
+        }
+
+        return generatedSignature.toString().equals(signature);
     }
 }

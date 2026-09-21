@@ -1,5 +1,6 @@
 package com.Kalakriti.Kalakriti.controller;
 
+import com.Kalakriti.Kalakriti.entity.Role;
 import com.Kalakriti.Kalakriti.entity.User;
 import com.Kalakriti.Kalakriti.repository.UserRepository;
 
@@ -21,7 +22,7 @@ public class AdminVerificationController {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        if(!user.getRole().equals("ARTISAN")) {
+        if (user.getRole() == Role.ARTISAN) {
             return "User is not an artisan";
         }
 

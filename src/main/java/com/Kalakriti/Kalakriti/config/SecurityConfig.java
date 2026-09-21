@@ -3,6 +3,7 @@ package com.Kalakriti.Kalakriti.config;
 import com.Kalakriti.Kalakriti.security.JwtAuthenticationFilter;
 
 import org.springframework.context.annotation.*;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.*;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -31,22 +32,26 @@ public class SecurityConfig {
         this.userDetailsService = userDetailsService;
     }
 
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http)
             throws Exception {
 
         http
+                .cors(cors -> {})
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/products/**").permitAll()
-                        .requestMatchers("/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/artisan/**").hasRole("ARTISAN")
-                        .requestMatchers("/user/**").hasRole("USER")
                         .requestMatchers("/reviews/**").permitAll()
                         .requestMatchers("/test/**").permitAll()
-                        .requestMatchers("/user/orders/**").hasRole("USER")
-                        .requestMatchers("/user/cart/**").hasRole("USER")
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/artisan/**").hasRole("ARTISAN")
+                        .requestMatchers("/user/**").hasRole("CUSTOMER")
+                        .requestMatchers("/api/contact/**").permitAll()
+                        .requestMatchers("/api/newsletter/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/reviews/product/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/reviews/product/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session ->

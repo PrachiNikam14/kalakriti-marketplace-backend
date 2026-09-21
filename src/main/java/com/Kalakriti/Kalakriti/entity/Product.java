@@ -3,7 +3,11 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 
 import jakarta.persistence.*;
+import org.apache.logging.log4j.spi.ThreadContextMap;
+
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
 
 @Entity
 @Table(name = "products")
@@ -23,9 +27,12 @@ public class Product {
     @Column(nullable = false)
     private double price;
 
-    private String imageUrl;
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<ProductImageUrl> imageUrls;
 
-    private String category;
+
+    @Enumerated(EnumType.STRING)
+    private CategoryType category;
 
     @ManyToOne
     @JoinColumn(name = "artisan_id", nullable = false)
@@ -47,6 +54,9 @@ public class Product {
 
     @Column(nullable = false)
     private int stockQuantity;
+
+    private Double rating;
+    private Integer reviewCount;
 
     // ===== Getters & Setters =====
 
@@ -82,19 +92,19 @@ public class Product {
         this.price = price;
     }
 
-    public String getImageUrl() {
-        return imageUrl;
+    public List<ProductImageUrl> getImageUrls() {
+        return imageUrls;
     }
 
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
+    public void setImageUrls(List<ProductImageUrl> imageUrls) {
+        this.imageUrls = imageUrls;
     }
 
-    public String getCategory() {
+    public CategoryType getCategory() {
         return category;
     }
 
-    public void setCategory(String category) {
+    public void setCategory(CategoryType category) {
         this.category = category;
     }
 
@@ -132,5 +142,18 @@ public class Product {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public long getReviewCount() {
+        return reviewCount;
+    }
+
+    public double getAverageRating() {
+        return rating;
+    }
+
+
+    public ThreadContextMap getImageUrl() {
+        return (ThreadContextMap) imageUrls;
     }
 }

@@ -1,9 +1,6 @@
 package com.Kalakriti.Kalakriti.service;
 
-import com.Kalakriti.Kalakriti.dto.ArtisanOrderDTO;
-import com.Kalakriti.Kalakriti.dto.OrderItemDTO;
-import com.Kalakriti.Kalakriti.dto.OrderResponseDTO;
-import com.Kalakriti.Kalakriti.dto.OrderStatusUpdateResponseDTO;
+import com.Kalakriti.Kalakriti.dto.*;
 import com.Kalakriti.Kalakriti.entity.*;
 import com.Kalakriti.Kalakriti.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,7 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import java.util.List;
+import java.util.*;
 
 @Service
 public class OrderService {
@@ -24,18 +21,19 @@ public class OrderService {
     private final CartItemRepository cartItemRepository;
     private final AddressRepository addressRepository;
     private final OrderItemRepository orderItemRepository;
+    private final RazorpayService razorpayService;
 
     @Autowired
-    private RazorpayService razorpayService;
-
-    public OrderService(OrderRepository orderRepository,
-                        ProductRepository productRepository,
-                        NotificationService notificationService,
-                        CartRepository cartRepository,
-                        CartItemRepository cartItemRepository,
-                        AddressRepository addressRepository,
-                        OrderItemRepository orderItemRepository) {
-
+    public OrderService(
+            OrderRepository orderRepository,
+            ProductRepository productRepository,
+            NotificationService notificationService,
+            CartRepository cartRepository,
+            CartItemRepository cartItemRepository,
+            AddressRepository addressRepository,
+            OrderItemRepository orderItemRepository,
+            RazorpayService razorpayService
+    ) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.notificationService = notificationService;
@@ -43,12 +41,17 @@ public class OrderService {
         this.cartItemRepository = cartItemRepository;
         this.addressRepository = addressRepository;
         this.orderItemRepository = orderItemRepository;
+        this.razorpayService = razorpayService;
     }
 
     // ================= USER ORDER HISTORY =================
-    public List<OrderResponseDTO> getUserOrders(User user) {
 
-        return orderRepository.findByUser(user)
+    public List<OrderResponseDTO> getUserOrders(User user) {
+        return orderRepository
+                .findByUserAndPaymentStatusOrderByCreatedAtDesc(
+                        user,
+                        PaymentStatus.PAID
+                )
                 .stream()
                 .map(order -> {
 
@@ -64,7 +67,12 @@ public class OrderService {
 
                     return new OrderResponseDTO(
                             order.getId(),
+                            order.getSubtotal(),
+                            order.getGstAmount(),
+                            order.getShippingCharge(),
+                            order.getDiscountAmount(),
                             order.getTotalPrice(),
+                            order.getCouponCode(),
                             order.getStatus().name(),
                             order.getCreatedAt(),
                             items
@@ -72,18 +80,26 @@ public class OrderService {
                 })
                 .toList();
     }
+
     // ================= ADMIN UPDATE STATUS =================
+
     @Transactional
-    public OrderStatusUpdateResponseDTO updateOrderStatus(Long orderId,
-                                                          OrderStatus newStatus) {
+    public OrderStatusUpdateResponseDTO updateOrderStatus(
+            Long orderId,
+            OrderStatus newStatus
+    ) {
 
         Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found"));
+                .orElseThrow(() ->
+                        new RuntimeException("Order not found")
+                );
 
         if (!isValidStatusTransition(order.getStatus(), newStatus)) {
             throw new RuntimeException(
                     "Invalid status transition from "
-                            + order.getStatus() + " to " + newStatus
+                            + order.getStatus()
+                            + " to "
+                            + newStatus
             );
         }
 
@@ -116,21 +132,35 @@ public class OrderService {
     }
 
     // ================= USER CANCEL ORDER =================
+
     @Transactional
-    public OrderStatusUpdateResponseDTO cancelOrder(User user, Long orderId) {
+    public String cancelOrder(Long orderId, User user) {
 
         Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found"));
+                .orElseThrow(() ->
+                        new RuntimeException("Order not found")
+                );
 
-        if (!order.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Unauthorized action");
+        if (order.getUser() == null
+                || !order.getUser().getId().equals(user.getId())) {
+
+            throw new RuntimeException(
+                    "You are not authorized to cancel this order"
+            );
         }
 
-        if (order.getStatus() != OrderStatus.PLACED) {
-            throw new RuntimeException("Only PLACED orders can be cancelled");
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            throw new RuntimeException("Order is already cancelled");
         }
 
-        // restore stock for each item
+        if (order.getStatus() == OrderStatus.SHIPPED
+                || order.getStatus() == OrderStatus.DELIVERED) {
+
+            throw new RuntimeException(
+                    "This order cannot be cancelled now"
+            );
+        }
+
         for (OrderItem item : order.getItems()) {
 
             Product product = item.getProduct();
@@ -138,30 +168,21 @@ public class OrderService {
             product.setStockQuantity(
                     product.getStockQuantity() + item.getQuantity()
             );
-
-            productRepository.save(product);
         }
 
         order.setStatus(OrderStatus.CANCELLED);
+
         orderRepository.save(order);
 
-        notificationService.sendNotification(
-                user,
-                NotificationType.ORDER_CANCELLED,
-                "Order Cancelled",
-                "Your order #" + order.getId() + " has been cancelled."
-        );
-
-        return new OrderStatusUpdateResponseDTO(
-                "Order cancelled successfully",
-                order.getId(),
-                order.getStatus()
-        );
+        return "Order cancelled successfully";
     }
 
     // ================= STATUS TRANSITION LOGIC =================
-    private boolean isValidStatusTransition(OrderStatus currentStatus,
-                                            OrderStatus newStatus) {
+
+    private boolean isValidStatusTransition(
+            OrderStatus currentStatus,
+            OrderStatus newStatus
+    ) {
 
         switch (currentStatus) {
 
@@ -182,26 +203,38 @@ public class OrderService {
     }
 
     // ================= CHECKOUT =================
+
     @Transactional
-    public String checkout(User user, Long addressId) {
-
-        Cart cart = cartRepository.findByUser(user)
-                .orElseThrow(() -> new RuntimeException("Cart not found"));
-
-        if (cart.getItems().isEmpty()) {
-            throw new RuntimeException("Cart is empty");
-        }
+    public CheckoutOrderResponseDTO checkout(
+            User user,
+            Long addressId,
+            String couponCode
+    ) {
 
         Address address = addressRepository.findById(addressId)
-                .orElseThrow(() -> new RuntimeException("Address not found"));
+                .orElseThrow(() ->
+                        new RuntimeException("Address not found")
+                );
 
         if (!address.getUser().getId().equals(user.getId())) {
             throw new RuntimeException("Unauthorized address");
         }
 
+        Cart cart = cartRepository.findByUser(user)
+                .orElseThrow(() ->
+                        new RuntimeException("Cart is empty")
+                );
+
+        if (cart.getItems() == null || cart.getItems().isEmpty()) {
+            throw new RuntimeException("Cart is empty");
+        }
+
         Order order = new Order();
+
         order.setUser(user);
         order.setStatus(OrderStatus.PLACED);
+        order.setPaymentStatus(PaymentStatus.PENDING);
+        order.setCouponCode(couponCode);
 
         order.setShippingFullName(address.getFullName());
         order.setShippingPhoneNumber(address.getPhoneNumber());
@@ -212,84 +245,139 @@ public class OrderService {
         order.setShippingPincode(address.getPincode());
         order.setShippingCountry(address.getCountry());
 
-        orderRepository.save(order);
+        double subtotal = 0.0;
 
-        double total = 0;
+        List<OrderItem> orderItems = new ArrayList<>();
 
-        for (CartItem item : cart.getItems()) {
+        for (CartItem cartItem : cart.getItems()) {
 
-            Product product = item.getProduct();
+            Product product = cartItem.getProduct();
 
-            if (!product.isActive()) {
-                throw new RuntimeException("Product inactive");
-            }
-
-            if (product.getApprovalStatus() != ApprovalStatus.APPROVED) {
-                throw new RuntimeException("Product not approved");
-            }
-
-            if (product.getStockQuantity() < item.getQuantity()) {
-                throw new RuntimeException("Insufficient stock");
+            if (product.getStockQuantity() < cartItem.getQuantity()) {
+                throw new RuntimeException(
+                        "Insufficient stock for " + product.getName()
+                );
             }
 
             OrderItem orderItem = new OrderItem();
+
             orderItem.setOrder(order);
             orderItem.setProduct(product);
-            orderItem.setQuantity(item.getQuantity());
+            orderItem.setQuantity(cartItem.getQuantity());
             orderItem.setPrice(product.getPrice());
 
-            orderItemRepository.save(orderItem);
+            orderItems.add(orderItem);
 
-            total += item.getQuantity() * product.getPrice();
+            subtotal += product.getPrice() * cartItem.getQuantity();
         }
 
-        order.setTotalPrice(total);
-        orderRepository.save(order);
+        double gstAmount = subtotal * 0.18;
+        double shippingCharge = 0.0;
+        double discountAmount = 0.0;
 
-        cartItemRepository.deleteAll(cart.getItems());
+        double totalPrice =
+                subtotal
+                        + gstAmount
+                        + shippingCharge
+                        - discountAmount;
 
-        notificationService.sendNotification(
-                user,
-                NotificationType.ORDER_PLACED,
-                "Order Confirmed",
-                "Your order #" + order.getId() + " has been placed successfully."
+        order.setItems(orderItems);
+        order.setSubtotal(subtotal);
+        order.setGstAmount(gstAmount);
+        order.setShippingCharge(shippingCharge);
+        order.setDiscountAmount(discountAmount);
+        order.setTotalPrice(totalPrice);
+
+        Order savedOrder = orderRepository.save(order);
+
+        return new CheckoutOrderResponseDTO(
+                savedOrder.getId(),
+                "Order created successfully",
+                savedOrder.getTotalPrice(),
+                savedOrder.getPaymentStatus().name()
         );
-
-        return "Checkout successful. Order placed.";
     }
 
     // ================= PAYMENT INIT =================
-    public String initiatePayment(Long orderId) throws Exception {
+
+    // ================= PAYMENT INIT =================
+
+    @Transactional
+    public Map<String, Object> initiatePayment(Long orderId, User user) throws Exception {
 
         Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found"));
+                .orElseThrow(() ->
+                        new RuntimeException("Order not found")
+                );
 
-        if(order.getRazorpayOrderId() != null){
-            return "Payment already initiated";
+        if (!order.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("You are not authorized to pay for this order");
         }
 
-        if (PaymentStatus.PAID.equals(order.getPaymentStatus())) {
+        if (order.getPaymentStatus() == PaymentStatus.PAID) {
             throw new RuntimeException("Order already paid");
         }
 
         com.razorpay.Order razorpayOrder =
-                razorpayService.createRazorpayOrder(order.getTotalPrice());
+                razorpayService.createRazorpayOrder(order);
 
-        order.setRazorpayOrderId(razorpayOrder.get("id"));
+        if (razorpayOrder == null) {
+            throw new RuntimeException(
+                    "Razorpay order creation failed"
+            );
+        }
+
+        Object razorpayIdObject = razorpayOrder.get("id");
+        Object razorpayAmountObject = razorpayOrder.get("amount");
+        Object razorpayCurrencyObject = razorpayOrder.get("currency");
+
+        if (razorpayIdObject == null
+                || razorpayAmountObject == null
+                || razorpayCurrencyObject == null) {
+
+            throw new RuntimeException(
+                    "Invalid response received from Razorpay"
+            );
+        }
+
+        String razorpayOrderId =
+                String.valueOf(razorpayIdObject);
+
+        long amount =
+                Long.parseLong(
+                        String.valueOf(razorpayAmountObject)
+                );
+
+        String currency =
+                String.valueOf(razorpayCurrencyObject);
+
+        order.setRazorpayOrderId(razorpayOrderId);
         orderRepository.save(order);
 
-        return razorpayOrder.toString();
+        Map<String, Object> response = new HashMap<>();
+
+        response.put("id", razorpayOrderId);
+        response.put("amount", amount);
+        response.put("currency", currency);
+        response.put("orderId", order.getId());
+
+        return response;
     }
 
     // ================= VERIFY PAYMENT =================
+
     @Transactional
-    public String verifyPayment(String razorpayOrderId,
-                                String razorpayPaymentId,
-                                String razorpaySignature) throws Exception {
+    public String verifyPayment(
+            String razorpayOrderId,
+            String razorpayPaymentId,
+            String razorpaySignature
+    ) throws Exception {
 
         Order order = orderRepository
                 .findByRazorpayOrderId(razorpayOrderId)
-                .orElseThrow(() -> new RuntimeException("Order not found"));
+                .orElseThrow(() ->
+                        new RuntimeException("Order not found")
+                );
 
         if (PaymentStatus.PAID.equals(order.getPaymentStatus())) {
             return "Payment already verified";
@@ -302,7 +390,9 @@ public class OrderService {
         );
 
         if (!isValid) {
-            throw new RuntimeException("Invalid payment signature");
+            throw new RuntimeException(
+                    "Invalid payment signature"
+            );
         }
 
         order.setPaymentStatus(PaymentStatus.PAID);
@@ -320,12 +410,90 @@ public class OrderService {
         }
 
         orderRepository.save(order);
+        clearCart(order.getUser());
 
         return "Payment verified successfully";
     }
 
-    //Fetch Order for Artisans
-    public Page<ArtisanOrderDTO> getOrdersForArtisan(Long artisanId, Pageable pageable) {
-        return orderItemRepository.findOrdersForArtisan(artisanId, pageable);
+    // ================= FETCH ORDERS FOR ARTISAN =================
+
+    public Page<ArtisanOrderDTO> getOrdersForArtisan(
+            Long artisanId,
+            Pageable pageable
+    ) {
+        return orderItemRepository.findOrdersForArtisan(
+                artisanId,
+                pageable
+        );
+    }
+
+    // ================= FETCH ORDERS FOR USER =================
+
+    public Page<UserOrderDTO> getOrdersForUser(
+            Long userId,
+            Pageable pageable
+    ) {
+        return orderItemRepository.findOrdersForUser(
+                userId,
+                pageable
+        );
+    }
+
+    // ================= ARTISAN UPDATE ORDER STATUS =================
+
+    public void updateOrderStatus(
+            Long orderId,
+            Long artisanId,
+            OrderStatus status
+    ) {
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() ->
+                        new RuntimeException("Order not found")
+                );
+
+        boolean artisanOwnsProduct = order.getItems()
+                .stream()
+                .anyMatch(item ->
+                        item.getProduct()
+                                .getArtisan()
+                                .getId()
+                                .equals(artisanId)
+                );
+
+        if (!artisanOwnsProduct) {
+            throw new RuntimeException(
+                    "You cannot update this order"
+            );
+        }
+
+        order.setStatus(status);
+        orderRepository.save(order);
+    }
+
+    // ================= CLEAR CART AFTER PAYMENT =================
+
+    @Transactional
+    public void clearCart(User user) {
+
+        Cart cart = cartRepository.findByUser(user)
+                .orElseThrow(() ->
+                        new RuntimeException("Cart not found")
+                );
+
+        cartItemRepository.deleteAll(cart.getItems());
+
+        cart.getItems().clear();
+
+        cartRepository.save(cart);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<Order> getLatestPendingOrder(User user) {
+        return orderRepository
+                .findFirstByUserAndPaymentStatusOrderByCreatedAtDesc(
+                        user,
+                        PaymentStatus.PENDING
+                );
     }
 }

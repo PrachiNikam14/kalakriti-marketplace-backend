@@ -40,4 +40,18 @@ public class CartController {
     public CheckoutResponseDTO checkout(@AuthenticationPrincipal User user) {
         return cartService.checkout(user);
     }
+
+
+    @PutMapping("/{cartItemId}")
+    public String updateQuantity(
+            @AuthenticationPrincipal User user,
+            @PathVariable Long cartItemId,
+            @RequestParam int quantity
+    ) {
+        return cartService.updateQuantity(
+                user,
+                cartItemId,
+                quantity
+        );
+    }
 }

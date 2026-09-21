@@ -72,25 +72,53 @@ public class CartService {
     }
 
     // 🟢 View Cart
+    // 🟢 View Cart
     public CartResponseDTO viewCart(User user) {
 
-        Cart cart = cartRepository.findByUser(user)
-                .orElseThrow(() -> new RuntimeException("Cart is empty"));
+        Cart cart = cartRepository.findByUser(user).orElse(null);
 
-        List<CartItemResponseDTO> itemDTOs = cart.getItems().stream().map(item -> {
-
-            double totalPrice = item.getProduct().getPrice() * item.getQuantity();
-
-            return new CartItemResponseDTO(
-                    item.getId(),
-                    item.getProduct().getId(),
-                    item.getProduct().getName(),
-                    item.getProduct().getPrice(),
-                    item.getQuantity(),
-                    totalPrice
+        // User has not created a cart yet
+        if (cart == null) {
+            return new CartResponseDTO(
+                    null,
+                    new ArrayList<>(),
+                    0
             );
+        }
 
-        }).toList();
+        List<CartItem> cartItems = cart.getItems();
+
+        // Safety check in case the items collection is null
+        if (cartItems == null) {
+            cartItems = new ArrayList<>();
+        }
+
+        List<CartItemResponseDTO> itemDTOs = cartItems.stream()
+                .map(item -> {
+
+                    double totalPrice =
+                            item.getProduct().getPrice() * item.getQuantity();
+
+                    List<String> urls = item.getProduct()
+                            .getImageUrls()
+                            .stream()
+                            .map(ProductImageUrl::getImageUrl)
+                            .toList();
+
+                    String imageUrl =
+                            !urls.isEmpty() ? urls.get(0) : null;
+
+                    return new CartItemResponseDTO(
+                            item.getId(),
+                            item.getProduct().getId(),
+                            item.getProduct().getName(),
+                            item.getProduct().getPrice(),
+                            item.getQuantity(),
+                            totalPrice,
+                            imageUrl
+                    );
+                })
+                .toList();
 
         double grandTotal = itemDTOs.stream()
                 .mapToDouble(CartItemResponseDTO::getTotalPrice)
@@ -170,5 +198,39 @@ public class CartService {
                 totalAmount,
                 orderIds
         );
+    }
+
+    public String updateQuantity(
+            User user,
+            Long cartItemId,
+            int quantity
+    ) {
+
+        Cart cart = cartRepository.findByUser(user)
+                .orElseThrow(() -> new RuntimeException("Cart not found"));
+
+        CartItem item = cartItemRepository.findById(cartItemId)
+                .orElseThrow(() -> new RuntimeException("Item not found"));
+
+        if (!item.getCart().getId().equals(cart.getId())) {
+            throw new RuntimeException("Unauthorized action");
+        }
+
+        if (quantity <= 0) {
+            cartItemRepository.delete(item);
+            return "Item removed";
+        }
+
+        Product product = item.getProduct();
+
+        if (product.getStockQuantity() < quantity) {
+            throw new RuntimeException("Insufficient stock");
+        }
+
+        item.setQuantity(quantity);
+
+        cartItemRepository.save(item);
+
+        return "Quantity updated";
     }
 }

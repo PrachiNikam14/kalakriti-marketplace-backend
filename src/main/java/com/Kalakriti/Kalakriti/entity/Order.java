@@ -1,5 +1,7 @@
 package com.Kalakriti.Kalakriti.entity;
+import java.util.ArrayList;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,10 +21,11 @@ public class Order {
 
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
+    @JsonIgnore
     private User user;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
-    private List<OrderItem> items;
+    private List<OrderItem> items = new ArrayList<>();
 
     @Column(nullable = false)
     private double totalPrice;
@@ -33,6 +36,8 @@ public class Order {
 
     @Column(updatable = false)
     private LocalDateTime createdAt;
+
+
 
     @PrePersist
     protected void onCreate() {
@@ -48,6 +53,14 @@ public class Order {
     private String shippingState;
     private String shippingPincode;
     private String shippingCountry;
+
+    private double subtotal;        // base price of items
+    private double gstAmount;       // GST applied
+    private double shippingCharge;  // shipping fee
+    private double discountAmount;  // discount applied
+
+    // ✅ Coupon details
+    private String couponCode;
 
     @Enumerated(EnumType.STRING)
     private PaymentStatus paymentStatus = PaymentStatus.PENDING;
@@ -192,4 +205,32 @@ public class Order {
     public void setItems(List<OrderItem> items) {
         this.items = items;
     }
+
+    public double getDiscountAmount() {
+        return discountAmount;
+    }
+    public void setDiscountAmount(double discountAmount) {
+        this.discountAmount = discountAmount;
+
+    }
+    public String getCouponCode() {
+        return couponCode;
+    }
+    public void setCouponCode(String couponCode) {
+        this.couponCode = couponCode;
+
+    }
+
+    public double getShippingCharge() {
+        return shippingCharge;
+    }
+    public void setShippingCharge(double shippingCharge) {
+        this.shippingCharge = shippingCharge;
+    }
+
+    public double getSubtotal() { return subtotal; }
+    public void setSubtotal(double subtotal) { this.subtotal = subtotal; }
+
+    public double getGstAmount() { return gstAmount; }
+    public void setGstAmount(double gstAmount) { this.gstAmount = gstAmount; }
 }

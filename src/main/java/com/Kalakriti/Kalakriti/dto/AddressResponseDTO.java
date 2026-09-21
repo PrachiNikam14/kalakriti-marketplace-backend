@@ -16,17 +16,22 @@ public class AddressResponseDTO {
     private boolean defaultAddress;
     private LocalDateTime createdAt;
 
-    public AddressResponseDTO(Long id,
-                              String fullName,
-                              String phoneNumber,
-                              String line1,
-                              String line2,
-                              String city,
-                              String state,
-                              String pincode,
-                              String country,
-                              boolean defaultAddress,
-                              LocalDateTime createdAt) {
+    public AddressResponseDTO() {
+    }
+
+    public AddressResponseDTO(
+            Long id,
+            String fullName,
+            String phoneNumber,
+            String line1,
+            String line2,
+            String city,
+            String state,
+            String pincode,
+            String country,
+            boolean defaultAddress,
+            LocalDateTime createdAt
+    ) {
         this.id = id;
         this.fullName = fullName;
         this.phoneNumber = phoneNumber;
@@ -40,82 +45,91 @@ public class AddressResponseDTO {
         this.createdAt = createdAt;
     }
 
-    // getters only
-    public AddressResponseDTO() {
-        super();
-
-    }
     public Long getId() {
         return id;
     }
+
     public void setId(Long id) {
         this.id = id;
     }
+
     public String getFullName() {
         return fullName;
     }
 
     public void setFullName(String fullName) {
         this.fullName = fullName;
-
     }
 
     public String getPhoneNumber() {
         return phoneNumber;
     }
+
     public void setPhoneNumber(String phoneNumber) {
         this.phoneNumber = phoneNumber;
     }
+
     public String getLine1() {
         return line1;
-
     }
+
     public void setLine1(String line1) {
         this.line1 = line1;
     }
+
     public String getLine2() {
         return line2;
     }
+
     public void setLine2(String line2) {
         this.line2 = line2;
     }
+
     public String getCity() {
         return city;
     }
+
     public void setCity(String city) {
         this.city = city;
     }
+
     public String getState() {
         return state;
     }
+
     public void setState(String state) {
         this.state = state;
     }
+
     public String getPincode() {
         return pincode;
     }
+
     public void setPincode(String pincode) {
         this.pincode = pincode;
     }
+
     public String getCountry() {
         return country;
     }
+
     public void setCountry(String country) {
         this.country = country;
     }
+
     public boolean isDefaultAddress() {
         return defaultAddress;
     }
+
     public void setDefaultAddress(boolean defaultAddress) {
         this.defaultAddress = defaultAddress;
-
     }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
-
     }
+
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
     }
-
 }

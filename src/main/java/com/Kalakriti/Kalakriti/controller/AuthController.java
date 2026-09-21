@@ -1,86 +1,66 @@
 package com.Kalakriti.Kalakriti.controller;
 
-import com.Kalakriti.Kalakriti.dto.UserResponse;
 import com.Kalakriti.Kalakriti.dto.AuthResponse;
 import com.Kalakriti.Kalakriti.dto.UserLoginRequest;
-import com.Kalakriti.Kalakriti.security.JwtService;
-import com.Kalakriti.Kalakriti.entity.User;
-import com.Kalakriti.Kalakriti.repository.UserRepository;
+import com.Kalakriti.Kalakriti.dto.UserRegisterRequest;
+import com.Kalakriti.Kalakriti.dto.UserResponse;
 
-import org.springframework.security.authentication.*;
-import org.springframework.security.crypto.password.PasswordEncoder;
+
+import com.Kalakriti.Kalakriti.service.AuthService;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
+import com.Kalakriti.Kalakriti.dto.ForgotPasswordRequest;
+import com.Kalakriti.Kalakriti.dto.ResetPasswordRequest;
 
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
 
-    private final AuthenticationManager authenticationManager;
-    private final JwtService jwtService;
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final AuthService authService;
 
-    public AuthController(AuthenticationManager authenticationManager,
-                          JwtService jwtService,
-                          UserRepository userRepository,
-                          PasswordEncoder passwordEncoder) {
-
-        this.authenticationManager = authenticationManager;
-        this.jwtService = jwtService;
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
+    public AuthController(AuthService authService) {
+        this.authService = authService;
     }
 
     @PostMapping("/register")
-    public String register(@RequestBody User user) {
-
-        if(userRepository.existsByEmail(user.getEmail())) {
-            return "Email already exists";
-        }
-        System.out.println("Password from request: " + user.getPassword());
-        user.setPassword(passwordEncoder.encode(user.getPassword()));
-
-        if(user.getRole().equals("ARTISAN")) {
-            user.setVerificationStatus("PENDING");
-        } else {
-            user.setVerificationStatus("APPROVED"); // normal users auto approved
-        }
-
-        userRepository.save(user);
-
-        return "User registered successfully";
+    public ResponseEntity<?> register(
+            @Valid @RequestBody UserRegisterRequest request
+    ) {
+        return ResponseEntity.ok(authService.register(request));
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@RequestBody UserLoginRequest request) {
+    public AuthResponse login(
+            @RequestBody UserLoginRequest request
+    ) {
+        return authService.login(request);
+    }
 
-        // 1️⃣ Authenticate credentials
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        request.getEmail(),
-                        request.getPassword()
-                )
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request) {
+
+        authService.forgotPassword(request.getEmail());
+
+        return ResponseEntity.ok(
+                "Password reset link has been sent to your email"
+        );
+    }
+
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request) {
+
+        authService.resetPassword(
+                request.getToken(),
+                request.getNewPassword()
         );
 
-        // 2️⃣ Fetch real user from DB
-        User dbUser = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        // 3️⃣ Generate token using DB role
-        String token = jwtService.generateToken(
-                dbUser.getEmail(),
-                dbUser.getRole()
+        return ResponseEntity.ok(
+                "Password has been reset successfully"
         );
-
-        // 4️⃣ Prepare UserResponse DTO
-        UserResponse userResponse = new UserResponse(
-                dbUser.getId(),
-                dbUser.getName(),
-                dbUser.getEmail(),
-                dbUser.getRole()
-        );
-
-        // 5️⃣ Return structured AuthResponse
-        return new AuthResponse(token, userResponse);
     }
 }

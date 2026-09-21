@@ -60,12 +60,10 @@ public class ArtisanProductController {
         product.setCategory(updatedProduct.getCategory());
         product.setStockQuantity(updatedProduct.getStockQuantity());
 
-        // Reset approval status when edited
-        product.setApprovalStatus(ApprovalStatus.valueOf("PENDING"));
+        // Reset approval when edited
+        product.setApprovalStatus(ApprovalStatus.PENDING);
 
-        productRepository.save(product);
-
-        return productService.convertToDTO(product);
+        return productService.updateProduct(product);
     }
 
     @DeleteMapping("/{id}")
